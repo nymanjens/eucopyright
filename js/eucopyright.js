@@ -2,6 +2,8 @@
 /* global $: false, JSZip: false */
 
 var EUCopyright = EUCopyright || {};
+EUCopyright.settings = EUCopyright.settings || {};
+EUCopyright.settings.defaultToNoOpinion = EUCopyright.settings.defaultToNoOpinion === undefined ? true : EUCopyright.settings.defaultToNoOpinion;
 
 (function(){
   "use strict";
@@ -139,7 +141,7 @@ EUCopyright.compile = function(){
     if (odf.action == 'mark') {
       text = underline(text, odf.key);
       text = bold(text, odf.key);
-    } else if (odf.action == 'remove') {
+    } else if (odf.action == 'remove' && paste) {
       text = replaceParagraph(text, odf.key, '');
     } else if (odf.action == 'paste' && paste) {
       text = replaceParagraph(text, odf.key, paste);
@@ -158,21 +160,27 @@ EUCopyright.compile = function(){
   };
 
   var processQuestions = function(text) {
-    var question, j, paste, radio;
+    var question, j, paste, radio, checked;
 
     for (var i = 0; i < EUCopyright.questions.length; i += 1) {
       question = EUCopyright.questions[i];
 
       if (question.type === 'multiple_choice' && question.options) {
+        checked = false;
         for (j = 0; j < question.options.length; j += 1) {
           radio = $('#q-' + question.num + '-' + j);
           if (radio.prop('checked')) {
             paste = '';
+            checked = true;
             if (question.options[j].fulltext) {
               paste = $('#q-' + question.num + '-' + j + '-text').val();
             }
             text = applyOdfs(text, question.options[j].odf, paste);
           }
+        }
+        if (!checked && EUCopyright.settings.defaultToNoOpinion) {
+          // Check no opinion, if not filled in
+          text = applyOdfs(text, question.options[2].odf, '');
         }
       } else if (question.type == 'open_question') {
         paste = $('#q-' + question.num + '-text').val();
@@ -184,7 +192,7 @@ EUCopyright.compile = function(){
 
   var constructContents = function(zip){
     var d = $.Deferred();
-    $.get('data/content.xml').done(function(parsed, mes, xhr){
+    $.get(EUCopyright.baseurl + '/data/content.xml').done(function(parsed, mes, xhr){
       var text = xhr.responseText;
 
       var name = $('#name').val();
@@ -195,7 +203,10 @@ EUCopyright.compile = function(){
         text = underline(text, 'P316');
       }
 
-      text = replaceParagraph(text, 'P293', $('#register-id').val());
+      var registerId = $('#register-id').val();
+      if (registerId) {
+        text = replaceParagraph(text, 'P293', registerId);
+      }
 
       var respondents = {
         enduser: ['T326'],
@@ -233,7 +244,7 @@ EUCopyright.compile = function(){
 
   var addFile = function(zip, zipPath){
     var d = $.Deferred();
-    $.get('data/' + zipPath).done(function(parsed, mes, xhr){
+    $.get(EUCopyright.baseurl + '/data/' + zipPath).done(function(parsed, mes, xhr){
       zip.file(zipPath, xhr.responseText);
       d.resolve();
     });
@@ -331,7 +342,7 @@ EUCopyright.loadQuestionGuide = function(slug, clb){
 };
 
 $(function(){
-  $('#compile').click(function(e){
+  $('.download-document').click(function(e){
     e.preventDefault();
     EUCopyright.compile().done(function(blob){
       $('#download').attr({
