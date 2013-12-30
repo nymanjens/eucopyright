@@ -8,6 +8,24 @@ EUCopyright.settings.defaultToNoOpinion = EUCopyright.settings.defaultToNoOpinio
 (function(){
   "use strict";
 
+var parseUrlParams = function (querystr) {
+  var urlParams;
+  querystr = querystr || window.location.search;
+  var match,
+      pl     = /\+/g,  // Regex for replacing addition symbol with a space
+      search = /([^&=]+)=?([^&]*)/g,
+      decode = function (s) { return decodeURIComponent(s.replace(pl, " ")); },
+      query  = querystr.substring(1);
+
+  urlParams = {};
+  match = search.exec(query);
+  while (match) {
+    urlParams[decode(match[1])] = decode(match[2]);
+    match = search.exec(query);
+  }
+  return urlParams;
+};
+
 EUCopyright.parseCSV = function( strData, strDelimiter ){
   /*
   This code taken from:
@@ -225,15 +243,20 @@ EUCopyright.compile = function(){
         other: ['T421']
       };
 
-      var typeOfRespondent = $('*[name="typeofrespondent"]:checked').val();
-      $(respondents[typeOfRespondent]).each(function(i, key){
-        text = underline(text, key);
+      var typeOfRespondent = $('*[name="typeofrespondent"]');
+      typeOfRespondent.each(function(i, el){
+        el = $(el);
+        if (el.attr('type') !== 'checkbox' || el.prop('checked')){
+          var currentTypeOfRespondent = el.val();
+          $(respondents[currentTypeOfRespondent]).each(function(j, key){
+            text = underline(text, key);
+          });
+          if (currentTypeOfRespondent === 'other') {
+            text = replaceParagraph(text, 'P423', $('#typeofrespondent-other-text').val());
+            text = replaceParagraph(text, 'P424', '');
+          }
+        }
       });
-      if (typeOfRespondent === 'other') {
-        text = replaceParagraph(text, 'P423', $('#typeofrespondent-other-text').val());
-        text = replaceParagraph(text, 'P424', '');
-      }
-
       text = processQuestions(text);
 
       zip.file('content.xml', text);
@@ -284,12 +307,22 @@ EUCopyright.applyGuideToAll = function(guide){
   }
 };
 
+EUCopyright.supports_html5_storage = function() {
+  try {
+    return 'localStorage' in window && window['localStorage'] !== null;
+  } catch (e) {
+    return false;
+  }
+};
+
 EUCopyright.applyGuide = function(guide, question, answer) {
   var isAnswered = false;
   if (question.type === 'multiple_choice' && question.options) {
     if (answer.option !== null) {
       isAnswered = true;
-      $('#q-' + question.num + '-' + answer.option).prop('checked', true);
+      $('#q-' + question.num + '-' + answer.option).
+        prop('checked', true).
+        parents('div').addClass('isChecked'); // microsites might need this to hide unrecommended answer options
       if (question.options && question.options[answer.option].fulltext) {
         $('#q-' + question.num + '-' + answer.option + '-text').val(answer.answer);
       }
@@ -341,6 +374,15 @@ EUCopyright.loadQuestionGuide = function(slug, clb){
   });
 };
 
+EUCopyright.loadGuide = function(slug){
+  $('.load-question-guide').removeClass('active');
+  $('.load-question-guide-' + slug).addClass('active');
+
+  EUCopyright.loadQuestionGuide(slug, function(answers){
+    EUCopyright.applyGuideToAll(EUCopyright.answers[slug], answers);
+  });
+};
+
 $(function(){
   $('.download-document').click(function(e){
     e.preventDefault();
@@ -349,6 +391,11 @@ $(function(){
         'href': window.URL.createObjectURL(blob),
         'download': 'consultation-document_en.odt'
       }).removeClass('disabled');
+      $('#download').click(function(){
+        if (window._paq !== undefined) {
+          window._paq.push(['trackGoal', 1]);
+        }
+      });
       $('#download-preparing').fadeOut();
     });
 
@@ -358,12 +405,8 @@ $(function(){
 
   $('.load-question-guide').click(function(e){
     e.preventDefault();
-    $('.load-question-guide').removeClass('active');
-    $(this).addClass('active');
-    var slug = $(this).attr('href').substr(1);
-    EUCopyright.loadQuestionGuide(slug, function(answers){
-      EUCopyright.applyGuideToAll(EUCopyright.answers[slug], answers);
-    });
+    var params = parseUrlParams($(this).attr('href'));
+    EUCopyright.loadGuide(params.guide);
   });
 
   $('.load-question').click(function(e){
@@ -390,7 +433,16 @@ $(function(){
   });
 
   $('.radio-text textarea').on('keyup', function(){
-    $(this).parent().parent().find('input:not(checked)').prop('checked', true);
+    var radio = $(this).parent().parent().find('input:not(checked)');
+    radio.prop('checked', true);
+
+    if (EUCopyright.supports_html5_storage()) {
+      var name = radio.attr('name');
+      var value = radio.val();
+      if (value !== null) {
+        localStorage.setItem(name, value);
+      }
+    }
   });
 
   $('.sdfootnoteanc').click(function(){
@@ -398,6 +450,48 @@ $(function(){
   });
 
   $('textarea').autogrow();
+
+  if (EUCopyright.supports_html5_storage()) {
+    $('textarea').each(function() {
+      var id = $(this).attr('id');
+      var value = localStorage.getItem(id);
+      $(this).val(value);
+    });
+    $('input[type=radio]').each(function() {
+      var name = $(this).attr('name');
+      var value = localStorage.getItem(name);
+      if (value !== null) {
+        $('input[type=radio]#' + name + '-' + value).prop('checked', true);
+      }
+    });
+    $('input[type=text]').each(function() {
+      var id = $(this).attr('id');
+      var value = localStorage.getItem(id);
+      $(this).val(value);
+    });
+
+    $('textarea').on('keydown change', function() {
+      var id = $(this).attr('id');
+      var value = $(this).val();
+      if (value !== null) {
+        localStorage.setItem(id, value);
+      }
+    });
+    $('input[type=radio]').on('click change', function() {
+      var name = $(this).attr('name');
+      var value = $(this).val();
+      if (value !== null) {
+        localStorage.setItem(name, value);
+      }
+    });
+    $('input[type=text]').on('keydown change', function() {
+      var id = $(this).attr('id');
+      var value = $(this).val();
+      if (value !== null) {
+        localStorage.setItem(id, value);
+      }
+    });
+  }
 
   setTimeout(function () {
     var $sideBar = $('.side-navbar');
@@ -418,6 +512,11 @@ $(function(){
       }
     });
   }, 100);
+
+  var urlParams = parseUrlParams();
+  if (urlParams.guide) {
+    EUCopyright.loadGuide(urlParams.guide);
+  }
 });
 
 }());

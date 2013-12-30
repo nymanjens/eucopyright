@@ -23,10 +23,10 @@
     <div class="col-lg-8 col-md-8">
       <h3>Let's get started!</h3>
       <div class="form-group">
-        <label for="name">Name (optional)</label>
-        <input type="text" class="form-control" id="name" placeholder="Optionally enter your name">
+        <label for="name">Your name</label>
+        <input type="text" class="form-control" id="name" placeholder="Enter your name">
         <p class="help-block">
-          You don't have to give your name, your answer can be anonymous.
+          Please provide your name to make your voice count.
         </p>
       </div>
     </div>
@@ -173,7 +173,7 @@
       <p class="lead">The following organisations have provided guides to the questions:</p>
       <div class="list-group" id="question-guides">
       {% for answer in site.data.answers %}
-        <a href="#{{ answer.slug }}" class="list-group-item load-question-guide">
+        <a href="?guide={{ answer.slug }}" class="list-group-item load-question-guide load-question-guide-{{ answer.slug }}">
           <h4 class="list-group-item-heading">
             {{ answer.name }}
           </h4>
